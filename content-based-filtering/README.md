@@ -104,7 +104,98 @@ Other movies similar to Jaws plot:
 ```
 While our system has done a decent job of finding movies with similar plot descriptions, the quality of recommendations is not that 
 great. "Jaws" returns all shark movies while it is more likely that the people who liked that movie are more inclined to enjoy other 
-James Cameroon movies. This is something that cannot be captured by the Plot Based Recommendation System.
+Steven Speilberg movies. This is something that cannot be captured by the Plot Based Recommendation System.
 
 ## Part 2: Credits, Genres and Keywords Based Recommender
 
+It goes without saying that the quality of our recommender would be increased with the usage of better metadata. That is exactly what 
+we are going to do in this section. We are going to build a recommender based on the following metadata: the 3 top actors, the director, 
+related genres and the movie plot keywords.
+
+From the cast, crew and keywords features, we need to extract the three most important actors, the director and the keywords associated 
+with that movie. Right now, our data is present in the form of "unstructured" lists , we need to convert it into a safe and usable structure
+
+```sh
+# Parse the stringified features into their corresponding python objects
+from ast import literal_eval
+
+features = ['cast', 'crew', 'keywords', 'genres']
+for feature in features:
+    df2[feature] = df2[feature].apply(literal_eval) 
+```
+
+Next, we'll write functions that will help us to extract the required information from each feature.
+
+```sh
+# Get the director's name from the crew feature. If director is not listed, return NaN
+def get_director(x):
+    for i in x:
+        if i['job'] == 'Director':
+            return i['name']
+    return np.nan
+    
+# Returns the list top 3 elements or entire list; whichever is more.
+def get_list(x):
+    if isinstance(x, list):
+        names = [i['name'] for i in x]
+        #Check if more than 3 elements exist. If yes, return only first three. If no, return entire list.
+        if len(names) > 3:
+            names = names[:3]
+        return names
+
+    #Return empty list in case of missing/malformed data
+    return []
+    
+# Define new director, cast, genres and keywords features that are in a suitable form.
+df2['director'] = df2['crew'].apply(get_director)
+
+features = ['cast', 'keywords', 'genres']
+for feature in features:
+    df2[feature] = df2[feature].apply(get_list)
+    
+# Print the new features of the first 3 films
+print(df2[['title', 'cast', 'director', 'keywords', 'genres']].head(3)) 
+```
+
+The next step would be to convert the names and keyword instances into lowercase and strip all the spaces between them. This is done so that 
+our vectorizer doesn't count the Johnny of "Johnny Depp" and "Johnny Galecki" as the same.
+
+```sh
+# Function to convert all strings to lower case and strip names of spaces
+def clean_data(x):
+    if isinstance(x, list):
+        return [str.lower(i.replace(" ", "")) for i in x]
+    else:
+        #Check if director exists. If not, return empty string
+        if isinstance(x, str):
+            return str.lower(x.replace(" ", ""))
+        else:
+            return ''
+
+# Apply clean_data function to your features.
+features = ['cast', 'keywords', 'director', 'genres']
+
+for feature in features:
+    df2[feature] = df2[feature].apply(clean_data) 
+```
+
+We are now in a position to create our string that contains all the metadata that we want to feed to our vectorizer (namely actors, director 
+and keywords).
+
+```sh 
+def join_all(x):
+    return ' '.join(x['keywords']) + ' ' + ' '.join(x['cast']) + ' ' + x['director'] + ' ' + ' '.join(x['genres'])
+df2['metadata'] = df2.apply(join_all, axis=1)
+```
+
+We will use CountVectorizer(), this is because we do not want to down-weight the presence of an actor/director if he or she has acted or 
+directed in relatively more movies. This is followed by get_recommendations().
+
+```sh
+cosine_sim2 = cosine_similarity(count_matrix, count_matrix)
+print(get_recommendations('The Dark Knight Rises', cosine_sim2))
+```
+
+We see that our recommender has been successful in capturing more information due to more metadata and has given us (arguably) better 
+recommendations. It is more likely that Marvels or DC comics fans will like the movies of the same production house. Therefore, to our 
+features above we can add production_company.
